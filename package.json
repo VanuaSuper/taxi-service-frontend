@@ -31,7 +31,6 @@
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
-    "@pbe/react-yandex-maps": "^1.2.5",
     "@tanstack/react-query": "^5.90.12",
     "@tanstack/react-query-devtools": "^5.91.1",
     "axios": "^1.13.2",
