@@ -12,6 +12,14 @@ dist
 dist-ssr
 *.local
 
+# dotenv
+.env
+.env.*
+!.env.example
+
+# mocks
+mocks/db.json
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
