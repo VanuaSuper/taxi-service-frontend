@@ -1,3 +1,29 @@
+# Taxi Service Frontend
+
+Проект веб-приложения для заказа такси с двумя типами пользователей: клиенты и водители.
+
+## Технологии
+- React 18 + TypeScript
+- Tailwind CSS
+- Zustand для состояния
+- React Query для работы с API
+- JSON Server для моков
+
+## Запуск проекта
+1. Установите зависимости: `npm install`
+2. Запустите dev-сервер: `npm run dev`
+3. Запустите mock API: `npm run server`
+
+## Заглушки бэкенда
+
+Файл локальной мок БД `mocks/db.json` игнорируется гитом.
+
+Чтобы создать его локально, скопируйте файл примера:
+
+```bash
+cp mocks/db.example.json mocks/db.json
+```
+
 # React + TypeScript + Vite
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
@@ -6,16 +32,6 @@ Currently, two official plugins are available:
 
 - [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
 - [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
-
-## Mocks
-
-Local mock database file `mocks/db.json` is ignored by git.
-
-To create it locally, copy the example file:
-
-```bash
-cp mocks/db.example.json mocks/db.json
-```
 
 ## React Compiler
 
