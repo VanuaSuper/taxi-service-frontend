@@ -24,7 +24,12 @@ export default defineConfig([
     settings: {
       react: {
         version: 'detect',
+        jsxRuntime: 'automatic',
       },
+    },
+    rules: {
+      'react/react-in-jsx-scope': 'off',
+      'react/jsx-uses-react': 'off',
     },
   },
 ])
