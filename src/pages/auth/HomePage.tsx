@@ -3,6 +3,7 @@ import { useEffect } from 'react'
 import { useAuthStore } from '../../shared/lib/stores/authStore'
 import { USER_ROLES } from '../../shared/lib/constants/authConstants'
 import { CustomerOrderMap } from '../../features/order-creation/CustomerOrderMap'
+import { DriverDashboard } from '../../features/driver-mode/DriverDashboard'
 
 export function HomePage() {
   const navigate = useNavigate()
@@ -30,22 +31,21 @@ export function HomePage() {
 
   return (
     <div className="min-h-[calc(100vh-56px)]">
-      {userRole === USER_ROLES.CUSTOMER ? (
-        <CustomerOrderMap />
-      ) : (
+      {userRole === USER_ROLES.CUSTOMER ? <CustomerOrderMap /> : null}
+      {userRole === USER_ROLES.DRIVER ? <DriverDashboard /> : null}
+
+      {userRole !== USER_ROLES.CUSTOMER && userRole !== USER_ROLES.DRIVER ? (
         <div className="container py-12">
           <div className="max-w-2xl mx-auto text-center">
             <h1 className="text-3xl font-bold mb-4 text-gray-900">Главная</h1>
-            <p className="text-gray-600 mb-8">
-              {userRole === USER_ROLES.DRIVER ? 'Роль: водитель' : 'Неизвестная роль'}
-            </p>
+            <p className="text-gray-600 mb-8">Неизвестная роль</p>
 
             <button onClick={logout} className="btn btn-outline px-6 py-3">
               Выйти
             </button>
           </div>
         </div>
-      )}
+      ) : null}
     </div>
   )
 }

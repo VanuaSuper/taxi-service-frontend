@@ -3,5 +3,10 @@
   "watch": true,
   "static": "./public",
   "routes": "./mocks/routes.json",
-  "middlewares": ["./mocks/authGuard.cjs", "./mocks/authMiddleware.cjs"]
+  "middlewares": [
+    "./mocks/corsMiddleware.cjs",
+    "./mocks/authGuard.cjs",
+    "./mocks/authMiddleware.cjs",
+    "./mocks/ordersMiddleware.cjs"
+  ]
 }

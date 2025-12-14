@@ -109,21 +109,6 @@ function getTokenFromCookie(req) {
 module.exports = (req, res, next) => {
   const path = normalizePath(req.path)
 
-  // allow cookies from Vite dev server
-  const origin = req.headers.origin
-  if (origin) {
-    res.setHeader('Access-Control-Allow-Origin', origin)
-    res.setHeader('Access-Control-Allow-Credentials', 'true')
-    res.setHeader(
-      'Access-Control-Allow-Headers',
-      'Content-Type, Authorization'
-    )
-    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE')
-  }
-  if (req.method === 'OPTIONS') {
-    return res.sendStatus(204)
-  }
-
   // POST /auth/login
   if (req.method === 'POST' && path === '/auth/login') {
     const { email, password, role } = req.body ?? {}
@@ -197,27 +182,18 @@ module.exports = (req, res, next) => {
 
   // GET /auth/me
   if (req.method === 'GET' && path === '/auth/me') {
-    const token = getTokenFromCookie(req)
-    const decoded = token ? jwt.decode(token) : null
-    const userId = decoded?.userId
-    if (!userId) {
-      return json(res, 401, { message: 'Не авторизован' })
-    }
-    const db = readDb()
-    const existingUser = db.users.find((u) => u.id === userId)
-    if (!existingUser) {
+    const user = req.user
+    if (!user) {
       return json(res, 401, { message: 'Не авторизован' })
     }
 
-    const user = {
-      id: existingUser.id,
-      email: existingUser.email,
-      name: existingUser.name,
-      role: existingUser.role,
-      phone: existingUser.phone
-    }
-
-    return json(res, 200, user)
+    return json(res, 200, {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+      phone: user.phone,
+    })
   }
 
   return next()

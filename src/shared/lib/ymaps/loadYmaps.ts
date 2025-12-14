@@ -1,4 +1,8 @@
-let ymapsLoadingPromise: Promise<any> | null = null
+let ymapsLoadingPromise: Promise<unknown> | null = null
+
+type YMapsLike = {
+  ready: (cb: () => void) => void
+}
 
 function buildYmapsScriptSrc(apiKey: string, suggestApiKey?: string) {
   const params = new URLSearchParams({
@@ -13,14 +17,15 @@ function buildYmapsScriptSrc(apiKey: string, suggestApiKey?: string) {
   return `https://api-maps.yandex.ru/2.1/?${params.toString()}`
 }
 
-export function loadYmaps(): Promise<any> {
+export function loadYmaps(): Promise<unknown> {
   if (typeof window === 'undefined') {
     return Promise.reject(new Error('Yandex Maps can be loaded only in browser'))
   }
 
   if (window.ymaps) {
     return new Promise((resolve) => {
-      window.ymaps.ready(() => resolve(window.ymaps))
+      const ymaps = window.ymaps as unknown as YMapsLike
+      ymaps.ready(() => resolve(window.ymaps))
     })
   }
 
@@ -48,7 +53,8 @@ export function loadYmaps(): Promise<any> {
           return
         }
 
-        window.ymaps.ready(() => resolve(window.ymaps))
+        const ymaps = window.ymaps as unknown as YMapsLike
+        ymaps.ready(() => resolve(window.ymaps))
       })
       existingScript.addEventListener('error', () => {
         reject(new Error('Failed to load Yandex Maps script'))
@@ -69,7 +75,8 @@ export function loadYmaps(): Promise<any> {
         return
       }
 
-      window.ymaps.ready(() => resolve(window.ymaps))
+      const ymaps = window.ymaps as unknown as YMapsLike
+      ymaps.ready(() => resolve(window.ymaps))
     }
 
     script.onerror = () => {

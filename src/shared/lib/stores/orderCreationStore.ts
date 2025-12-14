@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
+import type { Order } from '../../api/types/orderTypes'
 
 export type ActivePoint = 'A' | 'B'
 export type Coords = [number, number]
@@ -12,6 +13,8 @@ export type RouteInfo = {
 }
 
 interface OrderCreationState {
+  activeOrder: Order | null
+
   activePoint: ActivePoint
 
   fromAddress: string
@@ -27,6 +30,8 @@ interface OrderCreationState {
   successMessage: string | null
 
   routeBuildRequestId: number
+
+  setActiveOrder: (order: Order | null) => void
 
   setActivePoint: (next: ActivePoint) => void
   setFromAddress: (next: string) => void
@@ -46,6 +51,8 @@ interface OrderCreationState {
 }
 
 const initialState = {
+  activeOrder: null as Order | null,
+
   activePoint: 'A' as ActivePoint,
 
   fromAddress: '',
@@ -67,6 +74,8 @@ export const useOrderCreationStore = create<OrderCreationState>()(
   persist(
     (set, get) => ({
       ...initialState,
+
+      setActiveOrder: (order) => set({ activeOrder: order }),
 
       setActivePoint: (next) => set({ activePoint: next }),
       setFromAddress: (next) => set({ fromAddress: next }),
@@ -91,6 +100,7 @@ export const useOrderCreationStore = create<OrderCreationState>()(
       name: 'order-creation-storage',
       storage: createJSONStorage(() => sessionStorage),
       partialize: (state) => ({
+        activeOrder: state.activeOrder,
         activePoint: state.activePoint,
         fromAddress: state.fromAddress,
         toAddress: state.toAddress,

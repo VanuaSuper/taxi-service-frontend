@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import type { OrderComfortType } from '../../shared/api/types/orderTypes'
 import { createOrder } from '../../shared/api/services/orderService'
 import {
@@ -21,6 +21,7 @@ import { FormInput } from '../../shared/ui/form/FormInput'
 type SuggestField = 'fromAddress' | 'toAddress'
 
 export function OrderPanelForm() {
+  const queryClient = useQueryClient()
   const { user } = useAuthStore()
 
   const error = useOrderCreationStore((s) => s.error)
@@ -37,6 +38,7 @@ export function OrderPanelForm() {
   const setToAddress = useOrderCreationStore((s) => s.setToAddress)
   const setPointACoords = useOrderCreationStore((s) => s.setPointACoords)
   const setPointBCoords = useOrderCreationStore((s) => s.setPointBCoords)
+  const setActiveOrder = useOrderCreationStore((s) => s.setActiveOrder)
   const resetMessages = useOrderCreationStore((s) => s.resetMessages)
   const setError = useOrderCreationStore((s) => s.setError)
   const setSuccessMessage = useOrderCreationStore((s) => s.setSuccessMessage)
@@ -118,8 +120,9 @@ export function OrderPanelForm() {
         if (fromRequestIdRef.current !== requestId) return
         setFromSuggestions([])
       } finally {
-        if (fromRequestIdRef.current !== requestId) return
-        setIsSuggestingFrom(false)
+        if (fromRequestIdRef.current === requestId) {
+          setIsSuggestingFrom(false)
+        }
       }
     }, 1000)
 
@@ -148,8 +151,9 @@ export function OrderPanelForm() {
         if (toRequestIdRef.current !== requestId) return
         setToSuggestions([])
       } finally {
-        if (toRequestIdRef.current !== requestId) return
-        setIsSuggestingTo(false)
+        if (toRequestIdRef.current === requestId) {
+          setIsSuggestingTo(false)
+        }
       }
     }, 1000)
 
@@ -170,6 +174,8 @@ export function OrderPanelForm() {
   const submit = handleSubmit(async (values) => {
     resetMessages()
 
+    if (isOrderCreating) return
+
     if (!user) {
       setError('Нужно войти в аккаунт')
       return
@@ -182,7 +188,7 @@ export function OrderPanelForm() {
     try {
       const nextPriceByN = calculatePriceByN(routeInfo.distanceMeters, values.comfortType)
 
-      await mutateAsync({
+      const createdOrder = await mutateAsync({
         customerId: user.id,
         fromAddress: values.fromAddress?.trim() || undefined,
         toAddress: values.toAddress?.trim() || undefined,
@@ -196,7 +202,11 @@ export function OrderPanelForm() {
         createdAt: new Date().toISOString(),
       })
 
-      setSuccessMessage('Заказ создан (пока просто сохранили в mock db)')
+      setActiveOrder(createdOrder)
+      queryClient.setQueryData(['customer', 'currentOrder'], createdOrder)
+      void queryClient.invalidateQueries({ queryKey: ['customer', 'currentOrder'] })
+
+      setSuccessMessage(null)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Ошибка создания заказа')
     }

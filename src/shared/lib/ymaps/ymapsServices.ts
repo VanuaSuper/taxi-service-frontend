@@ -2,6 +2,13 @@ import { loadYmaps } from './loadYmaps'
 
 export type Coords = [number, number]
 
+type YMapsLike = {
+  suggest: (query: string, opts: { results: number }) => Promise<unknown>
+  geocode: (request: string | Coords, opts: { results: number }) => Promise<{
+    geoObjects: { get: (idx: number) => unknown }
+  }>
+}
+
 type RouteInfo = {
   distanceText: string
   durationText: string
@@ -39,7 +46,7 @@ function buildSuggestCacheKey(query: string) {
 }
 
 export async function suggestAddress(queryRaw: string): Promise<string[]> {
-  const ymaps = await loadYmaps()
+  const ymaps = (await loadYmaps()) as unknown as YMapsLike
 
   const query = (queryRaw ?? '').trim()
   if (query.length < 3) {
@@ -55,8 +62,11 @@ export async function suggestAddress(queryRaw: string): Promise<string[]> {
   const res = await ymaps.suggest(query, { results: 5 })
   const suggestions = Array.isArray(res)
     ? res
-        .map((item: any) => (typeof item?.value === 'string' ? item.value : null))
-        .filter(Boolean)
+        .map((item: unknown) => {
+          const v = (item as { value?: unknown } | null | undefined)?.value
+          return typeof v === 'string' ? v : null
+        })
+        .filter((s): s is string => Boolean(s))
     : []
 
   suggestCache.set(key, { suggestions })
@@ -65,7 +75,7 @@ export async function suggestAddress(queryRaw: string): Promise<string[]> {
 }
 
 export async function geocodeToCoords(address: string): Promise<Coords> {
-  const ymaps = await loadYmaps()
+  const ymaps = (await loadYmaps()) as unknown as YMapsLike
 
   const key = buildGeocodeCacheKey(address)
   const cached = geocodeCache.get(key)
@@ -74,12 +84,17 @@ export async function geocodeToCoords(address: string): Promise<Coords> {
   }
 
   const res = await ymaps.geocode(address, { results: 1 })
-  const first = res.geoObjects.get(0)
+  const first = res.geoObjects.get(0) as unknown as {
+    geometry?: { getCoordinates?: () => unknown }
+  } | null
   if (!first) {
     throw new Error('Адрес не найден')
   }
 
-  const coords = first.geometry.getCoordinates() as Coords
+  const coords = first.geometry?.getCoordinates?.() as Coords
+  if (!Array.isArray(coords) || coords.length !== 2) {
+    throw new Error('Адрес не найден')
+  }
 
   geocodeCache.set(key, { coords })
 
@@ -87,20 +102,25 @@ export async function geocodeToCoords(address: string): Promise<Coords> {
 }
 
 export async function reverseGeocodeToAddress(coords: Coords): Promise<string> {
-  const ymaps = await loadYmaps()
+  const ymaps = (await loadYmaps()) as unknown as YMapsLike
 
   const res = await ymaps.geocode(coords, { results: 1 })
-  const first = res.geoObjects.get(0)
+  const first = res.geoObjects.get(0) as unknown as {
+    getAddressLine?: () => unknown
+    properties?: { get?: (k: string) => unknown }
+  } | null
   if (!first) {
     throw new Error('Адрес не найден')
   }
 
   const addressLine =
     typeof first.getAddressLine === 'function'
-      ? (first.getAddressLine() as string)
-      : (first.properties?.get?.('text') as string | undefined)
+      ? (first.getAddressLine() as unknown)
+      : first.properties?.get?.('text')
 
-  const address = (addressLine ?? '').trim()
+  const addressLineStr = typeof addressLine === 'string' ? addressLine : undefined
+
+  const address = (addressLineStr ?? '').trim()
   if (!address) {
     throw new Error('Адрес не найден')
   }

@@ -56,13 +56,20 @@ function readDb() {
 
 const protectedEndpoints = {
   '/auth/me': [USER_ROLES.CUSTOMER, USER_ROLES.DRIVER],
-  '/users': [USER_ROLES.CUSTOMER, USER_ROLES.DRIVER],
+  '/users': [USER_ROLES.CUSTOMER],
+  '/customers': [USER_ROLES.CUSTOMER],
+  '/customers/': [USER_ROLES.CUSTOMER],
   '/drivers': [USER_ROLES.DRIVER],
+  '/drivers/': [USER_ROLES.DRIVER],
   '/orders': [USER_ROLES.CUSTOMER, USER_ROLES.DRIVER],
   '/reviews': [USER_ROLES.CUSTOMER, USER_ROLES.DRIVER]
 }
 
 module.exports = (req, res, next) => {
+  if (req.method === 'OPTIONS') {
+    return next()
+  }
+
   const path = normalizePath(req.path)
 
   let requiredRoles = null
@@ -99,6 +106,9 @@ module.exports = (req, res, next) => {
   if (!requiredRoles.includes(user.role)) {
     return json(res, 403, { message: 'Недостаточно прав' })
   }
+
+  req.user = user
+  req.userId = user.id
 
   return next()
 }

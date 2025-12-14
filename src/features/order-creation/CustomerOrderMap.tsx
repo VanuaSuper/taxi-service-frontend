@@ -1,19 +1,31 @@
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { loadYmaps } from '../../shared/lib/ymaps'
 import {
   getCachedRouteInfo,
   reverseGeocodeToAddress,
   setCachedRouteInfo,
 } from '../../shared/lib/ymaps/ymapsServices'
+import { getCurrentCustomerOrder } from '../../shared/api/services/customerOrderService'
+import type { Order } from '../../shared/api/types/orderTypes'
 import {
   type ActivePoint,
   type Coords,
   type RouteInfo,
   useOrderCreationStore,
 } from '../../shared/lib/stores/orderCreationStore'
+import { useAuthStore } from '../../shared/lib/stores/authStore'
 import { OrderPanelForm } from './OrderPanelForm'
+import { CustomerOrderTracker } from './CustomerOrderTracker'
 
 export function CustomerOrderMap() {
+  const { user } = useAuthStore()
+
+  const [mapReady, setMapReady] = useState(false)
+
+  const activeOrder = useOrderCreationStore((s) => s.activeOrder)
+  const setActiveOrder = useOrderCreationStore((s) => s.setActiveOrder)
+
   const activePoint = useOrderCreationStore((s) => s.activePoint)
   const pointACoords = useOrderCreationStore((s) => s.pointACoords)
   const pointBCoords = useOrderCreationStore((s) => s.pointBCoords)
@@ -28,13 +40,68 @@ export function CustomerOrderMap() {
   const setError = useOrderCreationStore((s) => s.setError)
   const setSuccessMessage = useOrderCreationStore((s) => s.setSuccessMessage)
 
+  const currentOrderQuery = useQuery<Order | null>({
+    queryKey: ['customer', 'currentOrder'],
+    queryFn: getCurrentCustomerOrder,
+    enabled: Boolean(user),
+    refetchInterval: 3000,
+  })
+
+  useEffect(() => {
+    // React Query v5: side-effects on success are done via useEffect
+    if (currentOrderQuery.data === undefined) return
+
+    if (currentOrderQuery.data) {
+      setActiveOrder(currentOrderQuery.data)
+      return
+    }
+
+    if (currentOrderQuery.data === null) {
+      if (activeOrder?.status === 'finished') return
+      setActiveOrder(null)
+    }
+  }, [activeOrder?.status, currentOrderQuery.data, setActiveOrder])
+
+  type YMapsMapLike = {
+    geoObjects: { add: (obj: unknown) => void; remove: (obj: unknown) => void }
+    events: { add: (event: string, cb: (e: unknown) => void) => void }
+    destroy: () => void
+  }
+
+  type YMapsLike = {
+    Map: new (
+      el: HTMLElement,
+      state: { center: [number, number]; zoom: number; controls: unknown[] },
+      options: { suppressMapOpenBlock: boolean }
+    ) => YMapsMapLike
+    Placemark: new (
+      coords: Coords,
+      props: { iconCaption: string },
+      options: { preset: string }
+    ) => unknown
+    multiRouter: {
+      MultiRoute: new (
+        model: { referencePoints: Coords[]; params: Record<string, unknown> },
+        options: Record<string, unknown>
+      ) => {
+        getActiveRoute: () => {
+          properties: { get: (k: string) => { text?: string; value?: number } | undefined }
+        } | null
+        events: { add: (event: string, cb: () => void) => void }
+        model: { events: { add: (event: string, cb: () => void) => void } }
+      }
+    }
+  }
+
   const mapContainerRef = useRef<HTMLDivElement | null>(null)
-  const mapRef = useRef<any>(null)
-  const ymapsRef = useRef<any>(null)
-  const pointAPlacemarkRef = useRef<any>(null)
-  const pointBPlacemarkRef = useRef<any>(null)
+  const mapRef = useRef<YMapsMapLike | null>(null)
+  const ymapsRef = useRef<YMapsLike | null>(null)
+  const pointAPlacemarkRef = useRef<unknown | null>(null)
+  const pointBPlacemarkRef = useRef<unknown | null>(null)
+  const customerPlacemarkRef = useRef<unknown | null>(null)
+  const geoWatchIdRef = useRef<number | null>(null)
   const activePointRef = useRef<ActivePoint>('A')
-  const multiRouteRef = useRef<any>(null)
+  const multiRouteRef = useRef<unknown | null>(null)
 
   useEffect(() => {
     activePointRef.current = activePoint
@@ -45,7 +112,7 @@ export function CustomerOrderMap() {
 
     async function init() {
       try {
-        const ymaps = await loadYmaps()
+        const ymaps = (await loadYmaps()) as unknown as YMapsLike
         ymapsRef.current = ymaps
 
         if (isCancelled) return
@@ -64,9 +131,10 @@ export function CustomerOrderMap() {
         )
 
         mapRef.current = map
+        setMapReady(true)
 
-        map.events.add('click', async (e: any) => {
-          const coords = e.get('coords') as Coords
+        map.events.add('click', async (e) => {
+          const coords = (e as { get?: (k: string) => unknown })?.get?.('coords') as Coords
 
           setSuccessMessage(null)
 
@@ -91,8 +159,6 @@ export function CustomerOrderMap() {
       } catch (e) {
         if (isCancelled) return
         setError(e instanceof Error ? e.message : 'Unknown error')
-      } finally {
-        if (isCancelled) return
       }
     }
 
@@ -104,12 +170,71 @@ export function CustomerOrderMap() {
         mapRef.current.destroy()
         mapRef.current = null
       }
+
+      if (geoWatchIdRef.current !== null && 'geolocation' in navigator) {
+        navigator.geolocation.clearWatch(geoWatchIdRef.current)
+        geoWatchIdRef.current = null
+      }
+
       ymapsRef.current = null
       pointAPlacemarkRef.current = null
       pointBPlacemarkRef.current = null
+      customerPlacemarkRef.current = null
       multiRouteRef.current = null
     }
-  }, [])
+  }, [setError, setFromAddress, setPointACoords, setPointBCoords, setSuccessMessage, setToAddress])
+
+  useEffect(() => {
+    if (!mapReady) return
+    if (!('geolocation' in navigator)) return
+
+    const map = mapRef.current
+    const ymaps = ymapsRef.current
+    if (!map || !ymaps) return
+
+    if (geoWatchIdRef.current !== null) return
+
+    geoWatchIdRef.current = navigator.geolocation.watchPosition(
+      (pos) => {
+        const lat = pos.coords.latitude
+        const lon = pos.coords.longitude
+        if (!Number.isFinite(lat) || !Number.isFinite(lon)) return
+
+        const coords: Coords = [lat, lon]
+
+        if (!customerPlacemarkRef.current) {
+          customerPlacemarkRef.current = new ymaps.Placemark(
+            coords,
+            { iconCaption: 'Вы' },
+            { preset: 'islands#violetCircleDotIcon' }
+          )
+          map.geoObjects.add(customerPlacemarkRef.current)
+          ;(map as unknown as { setCenter?: (c: Coords, z?: number) => void }).setCenter?.(coords, 14)
+        } else {
+          ;(
+            customerPlacemarkRef.current as {
+              geometry: { setCoordinates: (c: Coords) => void }
+            }
+          ).geometry.setCoordinates(coords)
+        }
+      },
+      () => {
+        // ignore
+      },
+      {
+        enableHighAccuracy: true,
+        maximumAge: 15000,
+        timeout: 10000,
+      }
+    )
+
+    return () => {
+      if (geoWatchIdRef.current !== null) {
+        navigator.geolocation.clearWatch(geoWatchIdRef.current)
+        geoWatchIdRef.current = null
+      }
+    }
+  }, [mapReady])
 
   useEffect(() => {
     const map = mapRef.current
@@ -132,7 +257,11 @@ export function CustomerOrderMap() {
       )
       map.geoObjects.add(pointAPlacemarkRef.current)
     } else {
-      pointAPlacemarkRef.current.geometry.setCoordinates(pointACoords)
+      ;(
+        pointAPlacemarkRef.current as {
+          geometry: { setCoordinates: (c: Coords) => void }
+        }
+      ).geometry.setCoordinates(pointACoords)
     }
   }, [pointACoords])
 
@@ -157,7 +286,11 @@ export function CustomerOrderMap() {
       )
       map.geoObjects.add(pointBPlacemarkRef.current)
     } else {
-      pointBPlacemarkRef.current.geometry.setCoordinates(pointBCoords)
+      ;(
+        pointBPlacemarkRef.current as {
+          geometry: { setCoordinates: (c: Coords) => void }
+        }
+      ).geometry.setCoordinates(pointBCoords)
     }
   }, [pointBCoords])
 
@@ -272,7 +405,7 @@ export function CustomerOrderMap() {
     <div className="relative w-full h-[calc(100vh-56px)]">
       <div ref={mapContainerRef} className="w-full h-full" />
 
-      <OrderPanelForm />
+      {activeOrder ? <CustomerOrderTracker /> : <OrderPanelForm />}
     </div>
   )
 }
