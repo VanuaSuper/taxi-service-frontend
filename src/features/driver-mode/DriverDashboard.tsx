@@ -11,7 +11,6 @@ import {
   updateDriverLocation,
 } from '../../shared/api/services/driverService'
 import type { Order } from '../../shared/api/types/orderTypes'
-import { useAuthStore } from '../../shared/lib/stores/authStore'
 import { useDriverModeStore } from '../../shared/lib/stores/driverModeStore'
 import { loadYmaps } from '../../shared/lib/ymaps'
 
@@ -69,7 +68,18 @@ function getDriverStatusLabel(status: Order['status']): string {
 
 export function DriverDashboard() {
   const queryClient = useQueryClient()
-  const { logout } = useAuthStore()
+
+  const [isPageVisible, setIsPageVisible] = useState(() =>
+    typeof document === 'undefined' ? true : document.visibilityState === 'visible'
+  )
+
+  useEffect(() => {
+    const onVisibility = () => {
+      setIsPageVisible(document.visibilityState === 'visible')
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => document.removeEventListener('visibilitychange', onVisibility)
+  }, [])
 
   const isOnline = useDriverModeStore((s) => s.isOnline)
   const setOnline = useDriverModeStore((s) => s.setOnline)
@@ -93,14 +103,14 @@ export function DriverDashboard() {
     queryKey: ['driver', 'currentOrder'],
     queryFn: getCurrentDriverOrder,
     enabled: isOnline,
-    refetchInterval: 3000,
+    refetchInterval: isPageVisible ? 3000 : false,
   })
 
   const availableOrdersQuery = useQuery({
     queryKey: ['driver', 'availableOrders'],
     queryFn: getAvailableDriverOrders,
     enabled: isOnline && !currentOrderQuery.data,
-    refetchInterval: 4000,
+    refetchInterval: isPageVisible ? 4000 : false,
   })
 
   const goOnlineMutation = useMutation({
@@ -473,20 +483,12 @@ export function DriverDashboard() {
   }, [isOnline, mapReady])
 
   return (
-    <div className="relative w-full h-[calc(100vh-56px)]">
+    <div className="relative w-full h-full">
       <div ref={mapContainerRef} className="w-full h-full" />
 
       <div className="absolute top-4 left-4 right-4 md:right-auto md:w-[420px] bg-white/95 backdrop-blur rounded-lg border border-gray-200 p-4 shadow">
         <div className="flex items-center justify-between gap-3">
           <h1 className="text-lg font-semibold text-gray-900">Экран водителя</h1>
-          <button
-            onClick={logout}
-            className="btn btn-outline px-3 py-2 disabled:opacity-50 disabled:cursor-not-allowed"
-            disabled={Boolean(currentOrder)}
-            title={currentOrder ? 'Нельзя выйти из аккаунта во время выполнения заказа' : undefined}
-          >
-            Выйти
-          </button>
         </div>
 
         {currentOrder ? null : (
@@ -527,69 +529,96 @@ export function DriverDashboard() {
           <div className="mt-3 text-gray-600">Загрузка текущего заказа…</div>
         ) : currentOrder ? (
           <div className="mt-3">
-            <div className="flex items-start justify-between gap-3">
-              <h2 className="text-base font-semibold">Текущий заказ</h2>
-              <div className="text-xs text-gray-500">#{currentOrder.id}</div>
-            </div>
-
-            <div className="mt-3 grid gap-2 text-sm text-gray-800">
-              <div>
-                <div className="text-xs text-gray-500">Подача</div>
-                <div className="font-semibold text-gray-900">
-                  {currentOrder.fromAddress ?? 'Точка A'}
-                </div>
-              </div>
-
-              <div>
-                <div className="text-xs text-gray-500">Куда</div>
-                <div className="font-semibold text-gray-900">
-                  {currentOrder.toAddress ?? 'Точка B'}
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between gap-3">
+            <div className="rounded-xl border border-gray-200 bg-white/70 p-3">
+              <div className="flex items-start justify-between gap-3">
                 <div>
-                  <div className="text-xs text-gray-500">Статус</div>
-                  <div className="font-medium text-gray-900">
-                    {getDriverStatusLabel(currentOrder.status)}
+                  <h2 className="text-base font-semibold text-gray-900">Текущий заказ</h2>
+                  <div className="text-xs text-gray-500 mt-0.5">Управление статусом</div>
+                </div>
+                <div className="text-xs font-medium text-gray-600">#{currentOrder.id}</div>
+              </div>
+
+              <div className="mt-3 rounded-xl border border-gray-200 bg-white/70 p-3">
+                <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                  Маршрут
+                </div>
+
+                <div className="mt-2 grid gap-2 text-sm">
+                  <div>
+                    <div className="text-xs text-gray-500">Подача</div>
+                    <div className="font-semibold text-gray-900 leading-snug">
+                      {currentOrder.fromAddress ?? 'Точка A'}
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="text-xs text-gray-500">Куда</div>
+                    <div className="font-semibold text-gray-900 leading-snug">
+                      {currentOrder.toAddress ?? 'Точка B'}
+                    </div>
                   </div>
                 </div>
               </div>
 
-              <div>
-                <div className="text-xs text-gray-500">Клиент</div>
-                <div className="font-medium text-gray-900">
+              <div className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white/70 px-3 py-2">
+                <div>
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                    Статус
+                  </div>
+                  <div className="text-sm font-semibold text-gray-900">
+                    {getDriverStatusLabel(currentOrder.status)}
+                  </div>
+                </div>
+
+                <div className="rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
+                  {currentOrder.comfortType === 'business'
+                    ? 'Бизнес'
+                    : currentOrder.comfortType === 'comfort'
+                      ? 'Комфорт'
+                      : 'Эконом'}
+                </div>
+              </div>
+
+              <div className="mt-3 rounded-xl border border-gray-200 bg-white/70 p-3">
+                <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                  Клиент
+                </div>
+
+                <div className="mt-2 text-sm font-semibold text-gray-900">
                   {currentOrderCustomerQuery.isLoading
                     ? 'Загрузка…'
                     : currentOrderCustomerQuery.error
                       ? 'Не удалось загрузить'
                       : currentOrderCustomerQuery.data?.name ?? '—'}
                 </div>
+
                 {currentOrderCustomerQuery.data?.phone ? (
-                  <div className="text-xs text-gray-500 mt-1">
-                    Телефон: {currentOrderCustomerQuery.data.phone}
+                  <div className="mt-1 text-xs text-gray-600">
+                    Телефон:{' '}
+                    <span className="font-medium">{currentOrderCustomerQuery.data.phone}</span>
                   </div>
                 ) : null}
+
                 {currentOrderCustomerQuery.error ? (
                   <div className="text-xs text-red-600 mt-1">
                     {String(currentOrderCustomerQuery.error)}
                   </div>
                 ) : null}
               </div>
-            </div>
 
-            <div className="mt-3">
-              <button
-                className="btn btn-primary px-4 py-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                onClick={() => {
-                  const next = getNextDriverStatus(currentOrder.status)
-                  if (!next) return
-                  setStatusMutation.mutate({ orderId: currentOrder.id, status: next })
-                }}
-                disabled={!canGoNextStatus}
-              >
-                {getNextDriverStatusLabel(currentOrder.status)}
-              </button>
+              <div className="mt-3">
+                <button
+                  className="btn btn-primary w-full px-4 py-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  onClick={() => {
+                    const next = getNextDriverStatus(currentOrder.status)
+                    if (!next) return
+                    setStatusMutation.mutate({ orderId: currentOrder.id, status: next })
+                  }}
+                  disabled={!canGoNextStatus}
+                >
+                  {getNextDriverStatusLabel(currentOrder.status)}
+                </button>
+              </div>
             </div>
 
             {currentOrderQuery.error ? (

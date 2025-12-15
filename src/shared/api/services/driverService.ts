@@ -1,6 +1,7 @@
 import type { AxiosError } from 'axios'
 import { apiClient } from '../apiClient'
 import type { Order, OrderStatus } from '../types/orderTypes'
+import type { Review } from '../types/reviewTypes'
 
 function toErrorMessage(error: unknown, defaultMessage: string) {
   const axiosError = error as AxiosError<{ message?: string }>
@@ -14,16 +15,68 @@ function toErrorMessage(error: unknown, defaultMessage: string) {
 
 export async function driverGoOnline() {
   try {
-    const res = await apiClient.post('/drivers/me/online')
+    const res = await apiClient.patch('/drivers/me/online')
     return res.data
   } catch (error) {
     throw new Error(toErrorMessage(error, 'Ошибка перехода в режим онлайн'))
   }
 }
 
+export type DriverReviewWithCustomer = Review & {
+  customerName: string | null
+}
+
+export async function getDriverMeReviews(): Promise<{
+  averageRating: number
+  totalReviews: number
+  reviews: DriverReviewWithCustomer[]
+}> {
+  try {
+    const res = await apiClient.get('/drivers/me/reviews')
+    return res.data
+  } catch (error) {
+    throw new Error(toErrorMessage(error, 'Ошибка получения отзывов'))
+  }
+}
+
+export async function getDriverMeProfile(): Promise<{
+  id: string
+  userId: string
+  comfortLevel: 'economy' | 'comfort' | 'business' | null
+  car: {
+    make: string
+    model: string
+    color: string
+    plate: string
+  } | null
+  isOnline: boolean
+  updatedAt: string
+}> {
+  try {
+    const res = await apiClient.get('/drivers/me/profile')
+    return res.data
+  } catch (error) {
+    throw new Error(toErrorMessage(error, 'Ошибка получения профиля водителя'))
+  }
+}
+
+export type DriverOrderHistoryItem = {
+  order: Order
+  review: Review | null
+}
+
+export async function getDriverOrdersHistory(): Promise<DriverOrderHistoryItem[]> {
+  try {
+    const res = await apiClient.get<DriverOrderHistoryItem[]>('/drivers/orders/history')
+    return res.data
+  } catch (error) {
+    throw new Error(toErrorMessage(error, 'Ошибка получения истории поездок'))
+  }
+}
+
 export async function driverGoOffline() {
   try {
-    const res = await apiClient.post('/drivers/me/offline')
+    const res = await apiClient.patch('/drivers/me/offline')
     return res.data
   } catch (error) {
     throw new Error(toErrorMessage(error, 'Ошибка выхода из режима онлайн'))
@@ -35,7 +88,7 @@ export async function updateDriverLocation(coords: {
   lon: number
 }): Promise<{ id: string; userId: string; isOnline: boolean; coords: [number, number] | null; updatedAt: string }> {
   try {
-    const res = await apiClient.post('/drivers/me/location', coords)
+    const res = await apiClient.patch('/drivers/me/location', coords)
     return res.data
   } catch (error) {
     throw new Error(toErrorMessage(error, 'Ошибка отправки геолокации'))

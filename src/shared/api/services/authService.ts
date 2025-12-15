@@ -4,6 +4,8 @@ import { apiClient } from '../apiClient'
 import type {
   AuthResponse,
   CustomerRegistrationData,
+  DriverApplicationData,
+  DriverApplicationResponse,
   LoginPayload
 } from '../types/authTypes'
 
@@ -25,6 +27,20 @@ export async function registerCustomer(
     return res.data
   } catch (error) {
     throw new Error(toErrorMessage(error, 'Ошибка регистрации клиента'))
+  }
+}
+
+export async function submitDriverApplication(
+  data: DriverApplicationData
+): Promise<DriverApplicationResponse> {
+  try {
+    const res = await apiClient.post<DriverApplicationResponse>(
+      '/auth/driver-applications',
+      data
+    )
+    return res.data
+  } catch (error) {
+    throw new Error(toErrorMessage(error, 'Ошибка отправки заявки'))
   }
 }
 

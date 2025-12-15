@@ -43,8 +43,8 @@ export function CustomerOrderMap() {
   const currentOrderQuery = useQuery<Order | null>({
     queryKey: ['customer', 'currentOrder'],
     queryFn: getCurrentCustomerOrder,
-    enabled: Boolean(user),
-    refetchInterval: 3000,
+    enabled: Boolean(user) && !activeOrder,
+    refetchInterval: false,
   })
 
   useEffect(() => {
@@ -263,7 +263,7 @@ export function CustomerOrderMap() {
         }
       ).geometry.setCoordinates(pointACoords)
     }
-  }, [pointACoords])
+  }, [mapReady, pointACoords])
 
   useEffect(() => {
     const map = mapRef.current
@@ -292,7 +292,7 @@ export function CustomerOrderMap() {
         }
       ).geometry.setCoordinates(pointBCoords)
     }
-  }, [pointBCoords])
+  }, [mapReady, pointBCoords])
 
   useEffect(() => {
     const map = mapRef.current
@@ -301,7 +301,7 @@ export function CustomerOrderMap() {
       map.geoObjects.remove(multiRouteRef.current)
       multiRouteRef.current = null
     }
-  }, [pointACoords, pointBCoords])
+  }, [mapReady, pointACoords, pointBCoords])
 
   const buildRoute = useCallback(() => {
     const map = mapRef.current
@@ -313,18 +313,17 @@ export function CustomerOrderMap() {
       pointACoords,
       pointBCoords
     )
+    setError(null)
+    setSuccessMessage(null)
+
     if (cachedRouteInfo) {
-      setError(null)
+      // We already know distance/duration, but we still need to draw the route line on the map.
       setIsRouteLoading(false)
       setRouteInfo(cachedRouteInfo)
-      setSuccessMessage(null)
-      return
+    } else {
+      setIsRouteLoading(true)
+      setRouteInfo(null)
     }
-
-    setError(null)
-    setIsRouteLoading(true)
-    setRouteInfo(null)
-    setSuccessMessage(null)
 
     if (multiRouteRef.current) {
       map.geoObjects.remove(multiRouteRef.current)
@@ -393,16 +392,18 @@ export function CustomerOrderMap() {
 
   useEffect(() => {
     if (!pointACoords || !pointBCoords) return
+    if (!mapReady) return
     buildRoute()
-  }, [pointACoords, pointBCoords, buildRoute])
+  }, [mapReady, pointACoords, pointBCoords, buildRoute])
 
   useEffect(() => {
     if (!routeBuildRequestId) return
+    if (!mapReady) return
     buildRoute()
-  }, [routeBuildRequestId, buildRoute])
+  }, [mapReady, routeBuildRequestId, buildRoute])
 
   return (
-    <div className="relative w-full h-[calc(100vh-56px)]">
+    <div className="relative w-full h-full">
       <div ref={mapContainerRef} className="w-full h-full" />
 
       {activeOrder ? <CustomerOrderTracker /> : <OrderPanelForm />}

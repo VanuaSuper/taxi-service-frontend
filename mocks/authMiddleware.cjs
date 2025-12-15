@@ -67,9 +67,10 @@ function readDb() {
     const raw = fs.readFileSync(dbPath, 'utf-8')
     const db = JSON.parse(raw)
     if (!db.users) db.users = []
+    if (!db.driverApplications) db.driverApplications = []
     return db
   } catch {
-    return { users: [] }
+    return { users: [], driverApplications: [] }
   }
 }
 
@@ -155,7 +156,9 @@ module.exports = (req, res, next) => {
 
     const db = readDb()
 
-    const emailTaken = db.users.some((u) => u.email === email)
+    const emailTaken = db.users.some(
+      (u) => u.email === email && u.role === USER_ROLES.CUSTOMER
+    )
     if (emailTaken) {
       return json(res, 409, { message: 'Email уже занят' })
     }
@@ -172,6 +175,48 @@ module.exports = (req, res, next) => {
     setAuthCookie(req, res, token)
 
     return json(res, 200, { user: newUser })
+  }
+
+  // POST /auth/driver-applications
+  if (req.method === 'POST' && path === '/auth/driver-applications') {
+    const { email, password, name, phone } = req.body ?? {}
+
+    if (!email || !password || !name || !phone) {
+      return json(res, 400, { message: 'Некорректные данные' })
+    }
+
+    const db = readDb()
+
+    const emailTakenByDriver = db.users.some(
+      (u) => u.email === email && u.role === USER_ROLES.DRIVER
+    )
+    if (emailTakenByDriver) {
+      return json(res, 409, { message: 'Водитель с таким email уже существует' })
+    }
+
+    const hasPendingApplication = db.driverApplications.some(
+      (a) => a.email === email && a.status === 'pending'
+    )
+    if (hasPendingApplication) {
+      return json(res, 409, { message: 'Заявка уже отправлена и ожидает рассмотрения' })
+    }
+
+    const application = {
+      id: crypto.randomUUID(),
+      email,
+      name,
+      phone,
+      passwordHash: hashPassword(password),
+      status: 'pending',
+      createdAt: new Date().toISOString(),
+      reviewedAt: null,
+      driverId: null,
+    }
+
+    db.driverApplications.push(application)
+    writeDb(db)
+
+    return json(res, 200, { ok: true })
   }
 
   // POST /auth/logout

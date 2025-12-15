@@ -5,6 +5,9 @@
   "routes": "./mocks/routes.json",
   "middlewares": [
     "./mocks/corsMiddleware.cjs",
+    "./mocks/managerGuard.cjs",
+    "./mocks/managerAuthMiddleware.cjs",
+    "./mocks/managerApplicationsMiddleware.cjs",
     "./mocks/authGuard.cjs",
     "./mocks/authMiddleware.cjs",
     "./mocks/ordersMiddleware.cjs"

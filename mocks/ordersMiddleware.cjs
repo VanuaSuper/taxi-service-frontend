@@ -27,25 +27,6 @@ function readDb() {
   }
 }
 
-function writeDb(db) {
-  fs.writeFileSync(dbPath, JSON.stringify(db, null, 2), 'utf-8')
-}
-
-function getOrCreateDriverRecord(db, driverUserId) {
-  let record = db.drivers.find((d) => d.userId === driverUserId)
-  if (!record) {
-    record = {
-      id: String(driverUserId),
-      userId: driverUserId,
-      isOnline: false,
-      coords: null,
-      updatedAt: new Date().toISOString(),
-    }
-    db.drivers.push(record)
-  }
-  return record
-}
-
 function isFinalStatus(status) {
   return status === 'finished' || status === 'canceled_by_customer'
 }
@@ -102,10 +83,18 @@ module.exports = (req, res, next) => {
         return json(res, 404, { message: 'Водитель не найден' })
       }
 
+      const driverRecord = db.drivers.find((d) => {
+        if (String(d.userId) === String(driverId)) return true
+        if (String(d.id) === String(driverId)) return true
+        return false
+      })
+
       return json(res, 200, {
         id: driverUser.id,
         name: driverUser.name,
         phone: driverUser.phone,
+        comfortLevel: driverRecord?.comfortLevel ?? null,
+        car: driverRecord?.car ?? null,
       })
     }
 
@@ -120,8 +109,65 @@ module.exports = (req, res, next) => {
         return true
       })
 
-      const order = activeOrders.length ? activeOrders[activeOrders.length - 1] : null
-      return json(res, 200, order)
+      if (activeOrders.length) {
+        const order = activeOrders[activeOrders.length - 1]
+        return json(res, 200, order)
+      }
+
+      // If there is no active order, return the latest finished order.
+      // This helps UI show review form after reload.
+      const finishedOrders = db.orders.filter((o) => {
+        if (String(o.customerId) !== String(user.id)) return false
+        return o.status === 'finished'
+      })
+
+      const lastFinished = finishedOrders.length
+        ? finishedOrders[finishedOrders.length - 1]
+        : null
+
+      if (!lastFinished) {
+        return json(res, 200, null)
+      }
+
+      const alreadyReviewed = db.reviews.some((r) => {
+        if (String(r.orderId) !== String(lastFinished.id)) return false
+        if (String(r.customerId) !== String(user.id)) return false
+        return true
+      })
+
+      if (alreadyReviewed) {
+        return json(res, 200, null)
+      }
+
+      return json(res, 200, lastFinished)
+    }
+
+    // GET /customers/orders/history
+    if (req.method === 'GET' && path === '/customers/orders/history') {
+      const db = readDb()
+
+      const orders = db.orders
+        .filter((o) => String(o.customerId) === String(user.id))
+        .sort((a, b) => {
+          const aTime = new Date(a.createdAt ?? 0).getTime()
+          const bTime = new Date(b.createdAt ?? 0).getTime()
+          return bTime - aTime
+        })
+
+      const items = orders.map((o) => {
+        const review = db.reviews.find((r) => {
+          if (String(r.orderId) !== String(o.id)) return false
+          if (String(r.customerId) !== String(user.id)) return false
+          return true
+        })
+
+        return {
+          order: o,
+          review: review ?? null,
+        }
+      })
+
+      return json(res, 200, items)
     }
 
     // POST /customers/orders/:id/cancel
@@ -142,9 +188,15 @@ module.exports = (req, res, next) => {
         return json(res, 409, { message: 'Нельзя отменить заказ на этом этапе' })
       }
 
-      order.status = 'canceled_by_customer'
-      writeDb(db)
-      return json(res, 200, order)
+      const needsApiPrefix = typeof req.originalUrl === 'string' && req.originalUrl.startsWith('/api/')
+      req.url = `${needsApiPrefix ? '/api' : ''}/orders/${orderId}`
+      req.method = 'PATCH'
+      req.body = {
+        status: 'canceled_by_customer',
+        canceledAt: new Date().toISOString(),
+      }
+
+      return next()
     }
 
     return next()
@@ -187,39 +239,132 @@ module.exports = (req, res, next) => {
 
   // POST /drivers/me/online
   if (req.method === 'POST' && path === '/drivers/me/online') {
+    return json(res, 405, { message: 'Используй PATCH /drivers/me/online' })
+  }
+
+  // PATCH /drivers/me/online
+  if (req.method === 'PATCH' && path === '/drivers/me/online') {
     const db = readDb()
-    const record = getOrCreateDriverRecord(db, user.id)
-    record.isOnline = true
-    record.updatedAt = new Date().toISOString()
-    writeDb(db)
-    return json(res, 200, record)
+    const record = db.drivers.find((d) => String(d.userId) === String(user.id) || String(d.id) === String(user.id))
+    if (!record) {
+      return json(res, 404, { message: 'Профиль водителя не найден' })
+    }
+
+    const driverId = String(record.id)
+    const needsApiPrefix = typeof req.originalUrl === 'string' && req.originalUrl.startsWith('/api/')
+    req.url = `${needsApiPrefix ? '/api' : ''}/drivers/${driverId}`
+    req.body = {
+      isOnline: true,
+      updatedAt: new Date().toISOString(),
+    }
+
+    return next()
   }
 
   // POST /drivers/me/offline
   if (req.method === 'POST' && path === '/drivers/me/offline') {
+    return json(res, 405, { message: 'Используй PATCH /drivers/me/offline' })
+  }
+
+  // PATCH /drivers/me/offline
+  if (req.method === 'PATCH' && path === '/drivers/me/offline') {
     const db = readDb()
-    const record = getOrCreateDriverRecord(db, user.id)
-    record.isOnline = false
-    record.coords = null
-    record.updatedAt = new Date().toISOString()
-    writeDb(db)
-    return json(res, 200, record)
+    const record = db.drivers.find((d) => String(d.userId) === String(user.id) || String(d.id) === String(user.id))
+    if (!record) {
+      return json(res, 404, { message: 'Профиль водителя не найден' })
+    }
+
+    const driverId = String(record.id)
+    const needsApiPrefix = typeof req.originalUrl === 'string' && req.originalUrl.startsWith('/api/')
+    req.url = `${needsApiPrefix ? '/api' : ''}/drivers/${driverId}`
+    req.body = {
+      isOnline: false,
+      coords: null,
+      updatedAt: new Date().toISOString(),
+    }
+
+    return next()
   }
 
   // POST /drivers/me/location
   if (req.method === 'POST' && path === '/drivers/me/location') {
+    return json(res, 405, { message: 'Используй PATCH /drivers/me/location' })
+  }
+
+  // PATCH /drivers/me/location
+  if (req.method === 'PATCH' && path === '/drivers/me/location') {
     const { lat, lon } = req.body ?? {}
     if (typeof lat !== 'number' || typeof lon !== 'number') {
       return json(res, 400, { message: 'Некорректные координаты' })
     }
 
+    // Don't write db.json manually.
+    // Rewrite request to json-server CRUD PATCH /drivers/:id
     const db = readDb()
-    const record = getOrCreateDriverRecord(db, user.id)
-    record.coords = [lat, lon]
-    record.updatedAt = new Date().toISOString()
-    writeDb(db)
+    const record = db.drivers.find((d) => String(d.userId) === String(user.id) || String(d.id) === String(user.id))
+    if (!record) {
+      return json(res, 404, { message: 'Профиль водителя не найден. Сначала выйди на линию.' })
+    }
 
-    return json(res, 200, record)
+    const driverId = String(record.id)
+    const needsApiPrefix = typeof req.originalUrl === 'string' && req.originalUrl.startsWith('/api/')
+    req.url = `${needsApiPrefix ? '/api' : ''}/drivers/${driverId}`
+    req.body = {
+      coords: [lat, lon],
+      updatedAt: new Date().toISOString(),
+    }
+
+    return next()
+  }
+
+  // GET /drivers/me/profile
+  if (req.method === 'GET' && path === '/drivers/me/profile') {
+    const db = readDb()
+    const record = db.drivers.find((d) => String(d.userId) === String(user.id) || String(d.id) === String(user.id))
+    if (!record) {
+      return json(res, 404, { message: 'Профиль водителя не найден' })
+    }
+
+    return json(res, 200, {
+      id: record.id,
+      userId: record.userId,
+      comfortLevel: record.comfortLevel ?? null,
+      car: record.car ?? null,
+      isOnline: Boolean(record.isOnline),
+      updatedAt: record.updatedAt,
+    })
+  }
+
+  // GET /drivers/me/reviews
+  if (req.method === 'GET' && path === '/drivers/me/reviews') {
+    const db = readDb()
+
+    const reviews = db.reviews
+      .filter((r) => String(r.driverId) === String(user.id))
+      .sort((a, b) => {
+        const aTime = new Date(a.createdAt ?? 0).getTime()
+        const bTime = new Date(b.createdAt ?? 0).getTime()
+        return bTime - aTime
+      })
+
+    const items = reviews.map((r) => {
+      const customer = db.users.find((u) => String(u.id) === String(r.customerId))
+      return {
+        ...r,
+        customerName: customer?.name ?? null,
+      }
+    })
+
+    const totalReviews = items.length
+    const avg = totalReviews
+      ? items.reduce((acc, r) => acc + (Number(r.rating) || 0), 0) / totalReviews
+      : 0
+
+    return json(res, 200, {
+      averageRating: avg,
+      totalReviews,
+      reviews: items,
+    })
   }
 
   // GET /drivers/orders/current
@@ -237,13 +382,54 @@ module.exports = (req, res, next) => {
     return json(res, 200, order ?? null)
   }
 
+  // GET /drivers/orders/history
+  if (req.method === 'GET' && path === '/drivers/orders/history') {
+    const db = readDb()
+
+    const orders = db.orders
+      .filter((o) => {
+        if (String(o.driverId ?? '') !== String(user.id)) return false
+        return o.status === 'finished'
+      })
+      .sort((a, b) => {
+        const aTime = new Date(a.createdAt ?? 0).getTime()
+        const bTime = new Date(b.createdAt ?? 0).getTime()
+        return bTime - aTime
+      })
+
+    const items = orders.map((o) => {
+      const review = db.reviews.find((r) => {
+        if (String(r.orderId) !== String(o.id)) return false
+        if (String(r.driverId) !== String(user.id)) return false
+        return true
+      })
+
+      return {
+        order: o,
+        review: review ?? null,
+      }
+    })
+
+    return json(res, 200, items)
+  }
+
   // GET /drivers/orders/available
   if (req.method === 'GET' && path === '/drivers/orders/available') {
     const db = readDb()
 
+    const driverRecord = db.drivers.find((d) => String(d.userId) === String(user.id))
+    const comfortLevel = String(driverRecord?.comfortLevel ?? '')
+      .trim()
+      .toLowerCase()
+
+    if (!comfortLevel) {
+      return json(res, 200, [])
+    }
+
     const orders = db.orders.filter((o) => {
       if (o.status !== 'searching_driver') return false
       if (o.driverId) return false
+      if (String(o.comfortType ?? '').toLowerCase() !== comfortLevel) return false
       return true
     })
 
@@ -268,8 +454,16 @@ module.exports = (req, res, next) => {
     order.driverId = user.id
     order.acceptedAt = new Date().toISOString()
 
-    writeDb(db)
-    return json(res, 200, order)
+    const needsApiPrefix = typeof req.originalUrl === 'string' && req.originalUrl.startsWith('/api/')
+    req.url = `${needsApiPrefix ? '/api' : ''}/orders/${orderId}`
+    req.method = 'PATCH'
+    req.body = {
+      status: 'accepted',
+      driverId: user.id,
+      acceptedAt: new Date().toISOString(),
+    }
+
+    return next()
   }
 
   // POST /drivers/orders/:id/status
@@ -295,9 +489,15 @@ module.exports = (req, res, next) => {
       return json(res, 409, { message: 'Нельзя перевести заказ в этот статус' })
     }
 
-    order.status = status
-    writeDb(db)
-    return json(res, 200, order)
+    const needsApiPrefix = typeof req.originalUrl === 'string' && req.originalUrl.startsWith('/api/')
+    req.url = `${needsApiPrefix ? '/api' : ''}/orders/${orderId}`
+    req.method = 'PATCH'
+    req.body = {
+      status,
+      updatedAt: new Date().toISOString(),
+    }
+
+    return next()
   }
 
   return next()

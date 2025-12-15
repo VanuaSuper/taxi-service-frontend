@@ -1,6 +1,7 @@
 import type { AxiosError } from 'axios'
 import { apiClient } from '../apiClient'
 import type { Order } from '../types/orderTypes'
+import type { Review } from '../types/reviewTypes'
 
 function toErrorMessage(error: unknown, defaultMessage: string) {
   const axiosError = error as AxiosError<{ message?: string }>
@@ -21,6 +22,20 @@ export async function getCurrentCustomerOrder(): Promise<Order | null> {
   }
 }
 
+export type CustomerOrderHistoryItem = {
+  order: Order
+  review: Review | null
+}
+
+export async function getCustomerOrdersHistory(): Promise<CustomerOrderHistoryItem[]> {
+  try {
+    const res = await apiClient.get<CustomerOrderHistoryItem[]>('/customers/orders/history')
+    return res.data
+  } catch (error) {
+    throw new Error(toErrorMessage(error, 'Ошибка получения истории заказов'))
+  }
+}
+
 export async function cancelCustomerOrder(orderId: string | number): Promise<Order> {
   try {
     const res = await apiClient.post<Order>(`/customers/orders/${orderId}/cancel`)
@@ -34,6 +49,13 @@ export async function getCustomerDriverPublic(driverId: string): Promise<{
   id: string
   name: string
   phone: string
+  comfortLevel: 'economy' | 'comfort' | 'business' | null
+  car: {
+    make: string
+    model: string
+    color: string
+    plate: string
+  } | null
 }> {
   try {
     const res = await apiClient.get(`/customers/drivers/${driverId}/public`)
