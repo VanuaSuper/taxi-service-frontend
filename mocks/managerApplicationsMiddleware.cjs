@@ -86,10 +86,16 @@ module.exports = (req, res, next) => {
 
   // POST /manager/driver-applications/:id/approve
   if (
-    req.method === 'POST' &&
-    /^\/manager\/driver-applications\/[^/]+\/approve$/.test(path)
+    req.method === 'PATCH' &&
+    /^\/manager\/driver-applications\/[^/]+$/.test(path)
   ) {
     const id = path.split('/')[3]
+    const { action } = req.body ?? {}
+
+    if (action !== 'approve') {
+      return next()
+    }
+
     const {
       driverLicenseNumber,
       carMake,
@@ -190,12 +196,18 @@ module.exports = (req, res, next) => {
     })
   }
 
-  // POST /manager/driver-applications/:id/reject
+  // PATCH /manager/driver-applications/:id (reject)
   if (
-    req.method === 'POST' &&
-    /^\/manager\/driver-applications\/[^/]+\/reject$/.test(path)
+    req.method === 'PATCH' &&
+    /^\/manager\/driver-applications\/[^/]+$/.test(path)
   ) {
     const id = path.split('/')[3]
+    const { action } = req.body ?? {}
+
+    if (action !== 'reject') {
+      return next()
+    }
+
     const { comment } = req.body ?? {}
 
     if (!comment || String(comment).trim().length < 3) {

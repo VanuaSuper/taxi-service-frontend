@@ -220,7 +220,7 @@ module.exports = (req, res, next) => {
   }
 
   // POST /auth/logout
-  if (req.method === 'POST' && path === '/auth/logout') {
+  if (req.method === 'DELETE' && path === '/auth/session') {
     clearAuthCookie(req, res)
     return json(res, 200, { ok: true })
   }

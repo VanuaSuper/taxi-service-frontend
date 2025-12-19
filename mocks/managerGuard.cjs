@@ -67,7 +67,7 @@ module.exports = (req, res, next) => {
     return next()
   }
 
-  if (path === '/manager/login') {
+  if (path === '/manager/auth/login') {
     return next()
   }
 

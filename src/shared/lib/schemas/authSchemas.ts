@@ -14,6 +14,10 @@ const baseUserSchema = z
       .string()
       .min(6, { message: 'Пароль должен быть не менее 6 символов' })
       .max(64, { message: 'Пароль не должен превышать 64 символов' }),
+    confirmPassword: z
+      .string()
+      .min(1, { message: 'Повторите пароль' })
+      .max(64, { message: 'Пароль не должен превышать 64 символов' }),
     name: z
       .string()
       .trim()
@@ -25,6 +29,10 @@ const baseUserSchema = z
         message:
           'Формат: +375 (29) 123-45-67, поддерживаются коды 17/25/29/33/44'
       })
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    message: 'Пароли не совпадают',
+    path: ['confirmPassword']
   })
   .strict()
 

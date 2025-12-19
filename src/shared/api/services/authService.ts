@@ -55,7 +55,7 @@ export async function login(payload: LoginPayload): Promise<AuthResponse> {
 
 export async function logout() {
   try {
-    await apiClient.post('/auth/logout')
+    await apiClient.delete('/auth/session')
   } catch {
     // ignore
   }

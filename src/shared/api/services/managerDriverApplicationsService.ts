@@ -53,9 +53,12 @@ export async function approveDriverApplication(params: {
   payload: ApproveDriverApplicationPayload
 }): Promise<ApproveDriverApplicationResponse> {
   try {
-    const res = await apiClient.post<ApproveDriverApplicationResponse>(
-      `/manager/driver-applications/${params.id}/approve`,
-      params.payload
+    const res = await apiClient.patch<ApproveDriverApplicationResponse>(
+      `/manager/driver-applications/${params.id}`,
+      {
+        action: 'approve',
+        ...params.payload
+      }
     )
     return res.data
   } catch (error) {
@@ -68,9 +71,12 @@ export async function rejectDriverApplication(params: {
   payload: RejectDriverApplicationPayload
 }): Promise<RejectDriverApplicationResponse> {
   try {
-    const res = await apiClient.post<RejectDriverApplicationResponse>(
-      `/manager/driver-applications/${params.id}/reject`,
-      params.payload
+    const res = await apiClient.patch<RejectDriverApplicationResponse>(
+      `/manager/driver-applications/${params.id}`,
+      {
+        action: 'reject',
+        ...params.payload
+      }
     )
     return res.data
   } catch (error) {

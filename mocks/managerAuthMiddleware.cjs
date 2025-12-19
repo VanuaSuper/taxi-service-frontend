@@ -96,7 +96,7 @@ module.exports = (req, res, next) => {
   const path = normalizePath(req.path)
 
   // POST /manager/login
-  if (req.method === 'POST' && path === '/manager/login') {
+  if (req.method === 'POST' && path === '/manager/auth/login') {
     const { login, password } = req.body ?? {}
 
     if (!login || !password) {
@@ -133,13 +133,13 @@ module.exports = (req, res, next) => {
   }
 
   // POST /manager/logout
-  if (req.method === 'POST' && path === '/manager/logout') {
+  if (req.method === 'POST' && path === '/manager/auth/logout') {
     clearAuthCookie(req, res)
     return json(res, 200, { ok: true })
   }
 
   // GET /manager/me
-  if (req.method === 'GET' && path === '/manager/me') {
+  if (req.method === 'GET' && path === '/manager/auth/me') {
     const token = getTokenFromCookie(req)
     if (!token) {
       return json(res, 401, { message: 'Не авторизован' })

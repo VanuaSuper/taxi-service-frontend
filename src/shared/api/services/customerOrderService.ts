@@ -38,7 +38,10 @@ export async function getCustomerOrdersHistory(): Promise<CustomerOrderHistoryIt
 
 export async function cancelCustomerOrder(orderId: string | number): Promise<Order> {
   try {
-    const res = await apiClient.post<Order>(`/customers/orders/${orderId}/cancel`)
+    const res = await apiClient.patch<Order>(`/orders/${orderId}`, {
+      status: 'canceled_by_customer',
+      canceledAt: new Date().toISOString()
+    })
     return res.data
   } catch (error) {
     throw new Error(toErrorMessage(error, 'Ошибка отмены заказа'))

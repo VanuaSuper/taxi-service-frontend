@@ -27,6 +27,10 @@ function readDb() {
   }
 }
 
+function writeDb(db) {
+  fs.writeFileSync(dbPath, JSON.stringify(db, null, 2), 'utf-8')
+}
+
 function isFinalStatus(status) {
   return status === 'finished' || status === 'canceled_by_customer'
 }
@@ -57,6 +61,75 @@ module.exports = (req, res, next) => {
   // For UI data (name/phone) use dedicated endpoints with role checks.
   if (path === '/users' || path.startsWith('/users/')) {
     return json(res, 403, { message: 'Доступ запрещён' })
+  }
+
+  if (req.method === 'PATCH' && /^\/orders\/[^/]+$/.test(path)) {
+    const orderId = path.split('/')[2]
+    const { status } = req.body ?? {}
+
+    if (typeof status !== 'string') {
+      return next()
+    }
+
+    const db = readDb()
+    const order = db.orders.find((o) => String(o.id) === String(orderId))
+    if (!order) {
+      return json(res, 404, { message: 'Заказ не найден' })
+    }
+
+    if (status === 'canceled_by_customer') {
+      if (user.role !== 'customer') {
+        return json(res, 403, { message: 'Доступ запрещён' })
+      }
+
+      if (String(order.customerId) !== String(user.id)) {
+        return json(res, 403, { message: 'Это не ваш заказ' })
+      }
+
+      if (order.status !== 'searching_driver') {
+        return json(res, 409, { message: 'Нельзя отменить заказ на этом этапе' })
+      }
+
+      order.status = 'canceled_by_customer'
+      order.canceledAt = req.body?.canceledAt ?? new Date().toISOString()
+      order.updatedAt = new Date().toISOString()
+
+      writeDb(db)
+
+      return json(res, 200, order)
+    }
+
+    if (user.role !== 'driver') {
+      return json(res, 403, { message: 'Доступ запрещён' })
+    }
+
+    if (status === 'accepted') {
+      if (order.status !== 'searching_driver' || order.driverId) {
+        return json(res, 409, { message: 'Заказ уже принят другим водителем' })
+      }
+
+      order.status = 'accepted'
+      order.driverId = user.id
+      order.acceptedAt = req.body?.acceptedAt ?? new Date().toISOString()
+      order.updatedAt = new Date().toISOString()
+
+      writeDb(db)
+      return json(res, 200, order)
+    }
+
+    if (String(order.driverId) !== String(user.id)) {
+      return json(res, 403, { message: 'Это не ваш заказ' })
+    }
+
+    if (!canDriverSetStatus(order.status, status)) {
+      return json(res, 409, { message: 'Нельзя перевести заказ в этот статус' })
+    }
+
+    order.status = status
+    order.updatedAt = new Date().toISOString()
+
+    writeDb(db)
+    return json(res, 200, order)
   }
 
   // CUSTOMER endpoints
@@ -171,34 +244,6 @@ module.exports = (req, res, next) => {
     }
 
     // POST /customers/orders/:id/cancel
-    if (req.method === 'POST' && /^\/customers\/orders\/[^/]+\/cancel$/.test(path)) {
-      const orderId = path.split('/')[3]
-      const db = readDb()
-
-      const order = db.orders.find((o) => String(o.id) === String(orderId))
-      if (!order) {
-        return json(res, 404, { message: 'Заказ не найден' })
-      }
-
-      if (String(order.customerId) !== String(user.id)) {
-        return json(res, 403, { message: 'Это не ваш заказ' })
-      }
-
-      if (order.status !== 'searching_driver') {
-        return json(res, 409, { message: 'Нельзя отменить заказ на этом этапе' })
-      }
-
-      const needsApiPrefix = typeof req.originalUrl === 'string' && req.originalUrl.startsWith('/api/')
-      req.url = `${needsApiPrefix ? '/api' : ''}/orders/${orderId}`
-      req.method = 'PATCH'
-      req.body = {
-        status: 'canceled_by_customer',
-        canceledAt: new Date().toISOString(),
-      }
-
-      return next()
-    }
-
     return next()
   }
 
@@ -238,83 +283,50 @@ module.exports = (req, res, next) => {
   }
 
   // POST /drivers/me/online
-  if (req.method === 'POST' && path === '/drivers/me/online') {
-    return json(res, 405, { message: 'Используй PATCH /drivers/me/online' })
-  }
+  // PATCH /drivers/me
+  if (req.method === 'PATCH' && path === '/drivers/me') {
+    const { isOnline, coords } = req.body ?? {}
 
-  // PATCH /drivers/me/online
-  if (req.method === 'PATCH' && path === '/drivers/me/online') {
-    const db = readDb()
-    const record = db.drivers.find((d) => String(d.userId) === String(user.id) || String(d.id) === String(user.id))
-    if (!record) {
-      return json(res, 404, { message: 'Профиль водителя не найден' })
+    if (isOnline !== undefined && typeof isOnline !== 'boolean') {
+      return json(res, 400, { message: 'Некорректный isOnline' })
     }
 
-    const driverId = String(record.id)
-    const needsApiPrefix = typeof req.originalUrl === 'string' && req.originalUrl.startsWith('/api/')
-    req.url = `${needsApiPrefix ? '/api' : ''}/drivers/${driverId}`
-    req.body = {
-      isOnline: true,
-      updatedAt: new Date().toISOString(),
-    }
-
-    return next()
-  }
-
-  // POST /drivers/me/offline
-  if (req.method === 'POST' && path === '/drivers/me/offline') {
-    return json(res, 405, { message: 'Используй PATCH /drivers/me/offline' })
-  }
-
-  // PATCH /drivers/me/offline
-  if (req.method === 'PATCH' && path === '/drivers/me/offline') {
-    const db = readDb()
-    const record = db.drivers.find((d) => String(d.userId) === String(user.id) || String(d.id) === String(user.id))
-    if (!record) {
-      return json(res, 404, { message: 'Профиль водителя не найден' })
-    }
-
-    const driverId = String(record.id)
-    const needsApiPrefix = typeof req.originalUrl === 'string' && req.originalUrl.startsWith('/api/')
-    req.url = `${needsApiPrefix ? '/api' : ''}/drivers/${driverId}`
-    req.body = {
-      isOnline: false,
-      coords: null,
-      updatedAt: new Date().toISOString(),
-    }
-
-    return next()
-  }
-
-  // POST /drivers/me/location
-  if (req.method === 'POST' && path === '/drivers/me/location') {
-    return json(res, 405, { message: 'Используй PATCH /drivers/me/location' })
-  }
-
-  // PATCH /drivers/me/location
-  if (req.method === 'PATCH' && path === '/drivers/me/location') {
-    const { lat, lon } = req.body ?? {}
-    if (typeof lat !== 'number' || typeof lon !== 'number') {
+    if (
+      coords !== undefined &&
+      coords !== null &&
+      (!Array.isArray(coords) || coords.length !== 2 || typeof coords[0] !== 'number' || typeof coords[1] !== 'number')
+    ) {
       return json(res, 400, { message: 'Некорректные координаты' })
     }
 
-    // Don't write db.json manually.
-    // Rewrite request to json-server CRUD PATCH /drivers/:id
     const db = readDb()
     const record = db.drivers.find((d) => String(d.userId) === String(user.id) || String(d.id) === String(user.id))
     if (!record) {
-      return json(res, 404, { message: 'Профиль водителя не найден. Сначала выйди на линию.' })
+      return json(res, 404, { message: 'Профиль водителя не найден' })
     }
 
-    const driverId = String(record.id)
-    const needsApiPrefix = typeof req.originalUrl === 'string' && req.originalUrl.startsWith('/api/')
-    req.url = `${needsApiPrefix ? '/api' : ''}/drivers/${driverId}`
-    req.body = {
-      coords: [lat, lon],
-      updatedAt: new Date().toISOString(),
+    if (typeof isOnline === 'boolean') {
+      record.isOnline = isOnline
+      if (isOnline === false) {
+        record.coords = null
+      }
     }
 
-    return next()
+    if (coords !== undefined) {
+      record.coords = coords
+    }
+
+    record.updatedAt = new Date().toISOString()
+
+    writeDb(db)
+
+    return json(res, 200, {
+      id: record.id,
+      userId: record.userId,
+      isOnline: Boolean(record.isOnline),
+      coords: record.coords ?? null,
+      updatedAt: record.updatedAt,
+    })
   }
 
   // GET /drivers/me/profile
@@ -434,70 +446,6 @@ module.exports = (req, res, next) => {
     })
 
     return json(res, 200, orders)
-  }
-
-  // POST /drivers/orders/:id/accept
-  if (req.method === 'POST' && /^\/drivers\/orders\/[^/]+\/accept$/.test(path)) {
-    const orderId = path.split('/')[3]
-    const db = readDb()
-
-    const order = db.orders.find((o) => String(o.id) === String(orderId))
-    if (!order) {
-      return json(res, 404, { message: 'Заказ не найден' })
-    }
-
-    if (order.status !== 'searching_driver' || order.driverId) {
-      return json(res, 409, { message: 'Заказ уже принят другим водителем' })
-    }
-
-    order.status = 'accepted'
-    order.driverId = user.id
-    order.acceptedAt = new Date().toISOString()
-
-    const needsApiPrefix = typeof req.originalUrl === 'string' && req.originalUrl.startsWith('/api/')
-    req.url = `${needsApiPrefix ? '/api' : ''}/orders/${orderId}`
-    req.method = 'PATCH'
-    req.body = {
-      status: 'accepted',
-      driverId: user.id,
-      acceptedAt: new Date().toISOString(),
-    }
-
-    return next()
-  }
-
-  // POST /drivers/orders/:id/status
-  if (req.method === 'POST' && /^\/drivers\/orders\/[^/]+\/status$/.test(path)) {
-    const orderId = path.split('/')[3]
-    const { status } = req.body ?? {}
-
-    const db = readDb()
-    const order = db.orders.find((o) => String(o.id) === String(orderId))
-    if (!order) {
-      return json(res, 404, { message: 'Заказ не найден' })
-    }
-
-    if (String(order.driverId) !== String(user.id)) {
-      return json(res, 403, { message: 'Это не ваш заказ' })
-    }
-
-    if (typeof status !== 'string') {
-      return json(res, 400, { message: 'Некорректный статус' })
-    }
-
-    if (!canDriverSetStatus(order.status, status)) {
-      return json(res, 409, { message: 'Нельзя перевести заказ в этот статус' })
-    }
-
-    const needsApiPrefix = typeof req.originalUrl === 'string' && req.originalUrl.startsWith('/api/')
-    req.url = `${needsApiPrefix ? '/api' : ''}/orders/${orderId}`
-    req.method = 'PATCH'
-    req.body = {
-      status,
-      updatedAt: new Date().toISOString(),
-    }
-
-    return next()
   }
 
   return next()

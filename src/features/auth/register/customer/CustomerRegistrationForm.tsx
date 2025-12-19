@@ -34,6 +34,7 @@ export function CustomerRegistrationForm() {
     defaultValues: {
       email: '',
       password: '',
+      confirmPassword: '',
       name: '',
       phone: ''
     }
@@ -47,7 +48,12 @@ export function CustomerRegistrationForm() {
     setServerError(null)
 
     try {
-      const res = await mutateAsync(values)
+      const res = await mutateAsync({
+        email: values.email,
+        password: values.password,
+        name: values.name,
+        phone: values.phone
+      })
       loginToStore(res.user)
       navigate('/')
     } catch (error) {
@@ -77,6 +83,14 @@ export function CustomerRegistrationForm() {
         autoComplete="new-password"
         error={errors.password?.message}
         {...register('password')}
+      />
+
+      <FormInput
+        label="Повторите пароль"
+        type="password"
+        autoComplete="new-password"
+        error={errors.confirmPassword?.message}
+        {...register('confirmPassword')}
       />
 
       <FormInput

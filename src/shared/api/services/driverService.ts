@@ -15,7 +15,9 @@ function toErrorMessage(error: unknown, defaultMessage: string) {
 
 export async function driverGoOnline() {
   try {
-    const res = await apiClient.patch('/drivers/me/online')
+    const res = await apiClient.patch('/drivers/me', {
+      isOnline: true
+    })
     return res.data
   } catch (error) {
     throw new Error(toErrorMessage(error, 'Ошибка перехода в режим онлайн'))
@@ -76,7 +78,10 @@ export async function getDriverOrdersHistory(): Promise<DriverOrderHistoryItem[]
 
 export async function driverGoOffline() {
   try {
-    const res = await apiClient.patch('/drivers/me/offline')
+    const res = await apiClient.patch('/drivers/me', {
+      isOnline: false,
+      coords: null
+    })
     return res.data
   } catch (error) {
     throw new Error(toErrorMessage(error, 'Ошибка выхода из режима онлайн'))
@@ -88,7 +93,9 @@ export async function updateDriverLocation(coords: {
   lon: number
 }): Promise<{ id: string; userId: string; isOnline: boolean; coords: [number, number] | null; updatedAt: string }> {
   try {
-    const res = await apiClient.patch('/drivers/me/location', coords)
+    const res = await apiClient.patch('/drivers/me', {
+      coords: [coords.lat, coords.lon]
+    })
     return res.data
   } catch (error) {
     throw new Error(toErrorMessage(error, 'Ошибка отправки геолокации'))
@@ -128,7 +135,9 @@ export async function getCurrentDriverOrder(): Promise<Order | null> {
 
 export async function acceptDriverOrder(orderId: string | number): Promise<Order> {
   try {
-    const res = await apiClient.post<Order>(`/drivers/orders/${orderId}/accept`)
+    const res = await apiClient.patch<Order>(`/orders/${orderId}`, {
+      status: 'accepted'
+    })
     return res.data
   } catch (error) {
     throw new Error(toErrorMessage(error, 'Ошибка принятия заказа'))
@@ -140,8 +149,8 @@ export async function setDriverOrderStatus(
   status: Exclude<OrderStatus, 'searching_driver'>
 ): Promise<Order> {
   try {
-    const res = await apiClient.post<Order>(`/drivers/orders/${orderId}/status`, {
-      status,
+    const res = await apiClient.patch<Order>(`/orders/${orderId}`, {
+      status
     })
     return res.data
   } catch (error) {

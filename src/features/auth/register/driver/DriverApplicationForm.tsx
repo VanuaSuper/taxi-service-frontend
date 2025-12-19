@@ -36,6 +36,7 @@ export function DriverApplicationForm() {
     defaultValues: {
       email: '',
       password: '',
+      confirmPassword: '',
       name: '',
       phone: ''
     }
@@ -46,7 +47,12 @@ export function DriverApplicationForm() {
     setSuccessMessage(null)
 
     try {
-      await submitMutation.mutateAsync(values)
+      await submitMutation.mutateAsync({
+        email: values.email,
+        password: values.password,
+        name: values.name,
+        phone: values.phone
+      })
       setSuccessMessage(
         'Заявка отправлена. Мы проверим данные и после этого с вами свяжется менеджер.'
       )
@@ -79,6 +85,14 @@ export function DriverApplicationForm() {
         autoComplete="new-password"
         error={errors.password?.message}
         {...register('password')}
+      />
+
+      <FormInput
+        label="Повторите пароль"
+        type="password"
+        autoComplete="new-password"
+        error={errors.confirmPassword?.message}
+        {...register('confirmPassword')}
       />
 
       <FormInput

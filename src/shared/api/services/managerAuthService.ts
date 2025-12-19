@@ -21,7 +21,10 @@ export async function managerLogin(
   payload: ManagerLoginPayload
 ): Promise<ManagerAuthResponse> {
   try {
-    const res = await apiClient.post<ManagerAuthResponse>('/manager/login', payload)
+    const res = await apiClient.post<ManagerAuthResponse>(
+      '/manager/auth/login',
+      payload
+    )
     return res.data
   } catch (error) {
     throw new Error(toErrorMessage(error, 'Ошибка входа менеджера'))
@@ -30,7 +33,7 @@ export async function managerLogin(
 
 export async function managerLogout() {
   try {
-    await apiClient.post('/manager/logout')
+    await apiClient.post('/manager/auth/logout')
   } catch {
     // ignore
   }
@@ -39,7 +42,7 @@ export async function managerLogout() {
 
 export async function getCurrentManager(): Promise<Manager> {
   try {
-    const res = await apiClient.get<Manager>('/manager/me')
+    const res = await apiClient.get<Manager>('/manager/auth/me')
     return res.data
   } catch (error) {
     throw new Error(toErrorMessage(error, 'Ошибка получения данных менеджера'))
